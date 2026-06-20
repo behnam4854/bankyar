@@ -61,6 +61,7 @@ model Transaction {
   customerId     Int
   customer       Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   accountId      Int
+  toAccountId    Int? // destination account for internal (own-account) transfers
   type           String // transfer | billpay
   amount         String // decimal string, IRR
   destination    String // dest card or IBAN, or bill id
@@ -76,6 +77,7 @@ model Conversation {
   id         Int       @id @default(autoincrement())
   customerId Int?
   customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  draft      String? // JSON: in-progress multi-turn action (e.g. transfer slot-filling)
   createdAt  DateTime  @default(now())
 
   messages Message[]

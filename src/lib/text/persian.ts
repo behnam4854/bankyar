@@ -75,3 +75,42 @@ export function hasTransferDestination(raw: string): boolean {
   const stripped = toEnglishDigits(raw).replace(/[ -]/g, "");
   return /IR\d{24}/i.test(stripped) || /\d{16}/.test(stripped);
 }
+
+// Detect which of the customer's OWN accounts is the transfer DESTINATION,
+// e.g. "به حساب پس‌اندازم" / "از پس‌اندازم به جاری". Direction-aware: words like
+// به/تو/توی/داخل mark the destination, از marks the source (so the destination
+// is the other account). Returns the destination type, or null if unclear.
+export function parseSelfAccount(raw: string): "savings" | "current" | null {
+  const t = normalizePersian(raw);
+  const acct = (s: string): "savings" | "current" => (/جاری/.test(s) ? "current" : "savings");
+  const ACC = "(پس ?انداز|پسنداز|جاری)";
+
+  const hasSavings = /(پس ?انداز|پسنداز)/.test(t);
+  const hasCurrent = /جاری/.test(t);
+  if (!hasSavings && !hasCurrent) return null;
+
+  // 1. Explicit destination marker wins.
+  const dest = t.match(new RegExp(`(?:به|تو|توی|داخل)\\s*(?:حساب\\s*)?${ACC}`));
+  if (dest) return acct(dest[1]);
+
+  // 2. Only a source given ("از ... ") → destination is the OTHER account
+  //    (only when both account types exist; here there are exactly two).
+  const src = t.match(new RegExp(`از\\s*(?:حساب\\s*)?${ACC}`));
+  if (src) {
+    if (hasSavings && hasCurrent) return acct(src[1]) === "current" ? "savings" : "current";
+    return null; // source known, destination unknown → let the dialog ask
+  }
+
+  // 3. A single account named with no direction → treat it as the destination.
+  if (hasSavings !== hasCurrent) return hasSavings ? "savings" : "current";
+  return null; // both named, no direction → ambiguous, ask
+}
+
+// Detect the SOURCE account the user wants to pay FROM, e.g. "از حساب پس‌اندازم".
+// Returns the account type, or null if not specified.
+export function parseSourceAccount(raw: string): "savings" | "current" | null {
+  const t = normalizePersian(raw);
+  const m = t.match(/از\s*(?:حساب\s*)?(پس ?انداز|پسنداز|جاری)/);
+  if (!m) return null;
+  return /جاری/.test(m[1]) ? "current" : "savings";
+}
