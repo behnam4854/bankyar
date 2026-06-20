@@ -34,23 +34,45 @@ export async function retrieve(query: string, k = 3): Promise<Retrieved[]> {
 const NOT_FOUND =
   "متأسفم، پاسخ دقیق این پرسش را در پایگاه دانش پیدا نکردم. می‌توانم شما را به کارشناس پشتیبانی وصل کنم یا با مرکز ارتباط مشتریان ۱۵۵۴ تماس بگیرید.";
 
-export async function answerFaq(query: string): Promise<string> {
+export async function answerFaq(
+  query: string,
+  opts: { profile?: string } = {},
+): Promise<string> {
   const docs = await retrieve(query);
-  if (docs.length === 0) return NOT_FOUND;
 
+  // No LLM configured: stay grounded in the approved KB (extractive fallback).
   if (!isLLMEnabled()) {
-    // Extractive fallback: return the best-matching approved snippet verbatim.
+    if (docs.length === 0) return NOT_FOUND;
     return `${docs[0].content}\n\n(منبع: ${docs[0].title})`;
   }
 
-  const context = docs.map((d, i) => `[${i + 1}] ${d.title}: ${d.content}`).join("\n");
+  // Open-domain mode: prefer the KB when it has relevant chunks (keeps
+  // bank-specific facts accurate), but let the model also answer from its own
+  // general banking knowledge when the KB doesn't cover the question.
+  const context = docs.length
+    ? docs.map((d, i) => `[${i + 1}] ${d.title}: ${d.content}`).join("\n")
+    : "(منبع مرتبطی در پایگاه دانش یافت نشد)";
+
+  const system = [
+    "تو «بانک‌یار»، دستیار هوشمند و فارسی‌زبان یک بانک ایرانی هستی.",
+    "هدف تو کمک واقعی و طبیعی به مشتری است؛ به سؤالات از پیش‌تعریف‌شده محدود نیستی و می‌توانی فراتر از آن‌ها پاسخ بدهی.",
+    "اگر «منابع» زیر به پرسش مربوط بودند، پاسخ را بر همان‌ها استوار کن؛ در غیر این صورت با دانش عمومی بانکی خودت پاسخ بده.",
+    "برای اعداد دقیق و متغیر (مثل نرخ سود، کارمزد یا سقف‌ها) اگر مطمئن نیستی، عدد قطعی نساز و مشتری را به ۱۵۵۴ یا شعبه ارجاع بده.",
+    "همیشه محترمانه، روشن و به فارسی پاسخ بده. هیچ تراکنش مالی‌ای را خودت انجام نده.",
+    "پاسخ را کوتاه و کاربردی نگه دار (حداکثر چند جمله یا چند مورد فهرستی). از توضیح اضافی و تکراری بپرهیز.",
+    opts.profile
+      ? `آنچه از گفتگوهای قبلی درباره این مشتری می‌دانیم (برای شخصی‌سازی لحن و پاسخ از آن استفاده کن): ${opts.profile}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   const out = await chat([
-    {
-      role: "system",
-      content:
-        "تو دستیار بانکی فارسی‌زبان هستی. فقط بر اساس «منابع» زیر و به زبان فارسی محترمانه پاسخ بده. اگر پاسخ در منابع نبود، صادقانه بگو که نمی‌دانی. هیچ اطلاعاتی از خودت نساز.",
-    },
+    { role: "system", content: system },
     { role: "user", content: `پرسش: ${query}\n\nمنابع:\n${context}` },
   ]);
-  return out ?? `${docs[0].content}\n\n(منبع: ${docs[0].title})`;
+  // Guard against null (gateway error) or empty content (reasoning model that
+  // ran out of room): fall back to the best KB snippet rather than show blank.
+  if (out && out.trim()) return out;
+  return docs[0] ? `${docs[0].content}\n\n(منبع: ${docs[0].title})` : NOT_FOUND;
 }

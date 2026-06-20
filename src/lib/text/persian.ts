@@ -25,30 +25,53 @@ export function normalizePersian(input: string): string {
     .trim();
 }
 
+export type DestinationType = "iban" | "card";
+
+// Detect a 16-digit card number even when grouped with spaces/dashes
+// (e.g. "6037-9911-1111-1111" or "6037 9911 1111 1111").
+const CARD_RE = /(?:\d[ -]?){15}\d/;
+
 // Pull the first amount (in Toman or Rial) and a destination card/IBAN from text.
 export function extractTransferParams(raw: string): {
   amount?: string; // normalized to IRR (rial)
   destination?: string;
+  destinationType?: DestinationType;
 } {
   const t = toEnglishDigits(raw);
 
-  // IBAN (شبا): IR + 24 digits
+  // Destination: IBAN (شبا) = IR + 24 digits, or a 16-digit card number.
   const iban = t.match(/IR\d{24}/i)?.[0];
-  // 16-digit card number (allow spaces/dashes)
-  const card = t.replace(/[\s-]/g, "").match(/\b\d{16}\b/)?.[0];
+  const cardRaw = !iban ? t.match(CARD_RE)?.[0] : undefined;
+  const card = cardRaw?.replace(/[ -]/g, "");
+  const destination = iban ?? card;
+  const destinationType: DestinationType | undefined = iban ? "iban" : card ? "card" : undefined;
 
-  // amount: a number optionally followed by تومان/هزار/میلیون
+  // Strip the destination digits from the text BEFORE reading the amount, so we
+  // never mistake the card/IBAN number for the amount.
+  let amountText = t;
+  if (iban) amountText = amountText.replace(iban, " ");
+  if (cardRaw) amountText = amountText.replace(cardRaw, " ");
+
+  // amount: a number optionally followed by a scale and unit.
   let amount: string | undefined;
-  const m = t.match(/(\d[\d,]*)\s*(میلیون|هزار)?\s*(تومان|تومن|ریال)?/);
+  const m = amountText.match(/(\d[\d,]*)\s*(میلیارد|میلیون|هزار)?\s*(تومان|تومن|ریال)?/);
   if (m) {
     let n = Number(m[1].replace(/,/g, ""));
     if (m[2] === "هزار") n *= 1_000;
-    if (m[2] === "میلیون") n *= 1_000_000;
+    else if (m[2] === "میلیون") n *= 1_000_000;
+    else if (m[2] === "میلیارد") n *= 1_000_000_000;
     // Default unit in everyday Iranian speech is Toman; convert to Rial.
-    const unit = m[3];
-    if (unit !== "ریال") n *= 10; // Toman -> Rial
+    if (m[3] !== "ریال") n *= 10; // Toman -> Rial
     if (n > 0) amount = String(n);
   }
 
-  return { amount, destination: iban ?? card };
+  return { amount, destination, destinationType };
+}
+
+// Quick check: does the text contain a transfer destination (card or IBAN)?
+// Used by intent detection so "۲۰۰ تومان به ۶۰۳۷…" routes to transfer even
+// without an explicit verb like «بفرست».
+export function hasTransferDestination(raw: string): boolean {
+  const stripped = toEnglishDigits(raw).replace(/[ -]/g, "");
+  return /IR\d{24}/i.test(stripped) || /\d{16}/.test(stripped);
 }

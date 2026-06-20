@@ -14,6 +14,14 @@ export async function getBalance(customerId: number) {
   return accounts.map((a) => ({ iban: a.iban, type: a.type, balance: a.balance, currency: a.currency }));
 }
 
+// Account identifiers (SHEBA/IBAN, card number, type) for the logged-in user.
+// Used to answer "شماره شبام چنده؟" with the real value instead of a deflection.
+export async function getAccountDetails(customerId: number) {
+  const accounts = await prisma.account.findMany({ where: { customerId } });
+  await audit("account_details_viewed", { count: accounts.length }, customerId);
+  return accounts.map((a) => ({ iban: a.iban, cardNumber: a.cardNumber, type: a.type }));
+}
+
 export async function listTransactions(customerId: number, limit = 5) {
   return prisma.transaction.findMany({
     where: { customerId, status: "completed" },

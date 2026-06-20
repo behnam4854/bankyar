@@ -12,6 +12,6 @@ export async function POST(req: Request) {
   if (typeof pendingTransferId !== "number") {
     return NextResponse.json({ error: "pendingTransferId required" }, { status: 400 });
   }
-  await issueOtp(session.customerId, session.mobile, "transfer", String(pendingTransferId));
-  return NextResponse.json({ ok: true });
+  const { devCode } = await issueOtp(session.customerId, session.mobile, "transfer", String(pendingTransferId));
+  return NextResponse.json({ ok: true, ...(devCode ? { devOtp: devCode } : {}) });
 }

@@ -14,7 +14,7 @@ export type ChatMessage = { role: "system" | "user" | "assistant"; content: stri
 // (callers must handle null with a deterministic fallback).
 export async function chat(
   messages: ChatMessage[],
-  opts: { temperature?: number; json?: boolean } = {},
+  opts: { temperature?: number; json?: boolean; maxTokens?: number } = {},
 ): Promise<string | null> {
   if (!isLLMEnabled()) return null;
   const base = process.env.LLM_BASE_URL!.replace(/\/$/, "");
@@ -29,6 +29,7 @@ export async function chat(
         model: process.env.LLM_MODEL || "gpt-4o-mini",
         messages,
         temperature: opts.temperature ?? 0.2,
+        ...(opts.maxTokens ? { max_tokens: opts.maxTokens } : {}),
         ...(opts.json ? { response_format: { type: "json_object" } } : {}),
       }),
     });

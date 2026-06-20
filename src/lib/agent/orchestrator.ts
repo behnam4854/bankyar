@@ -5,8 +5,9 @@ import type { Session } from "@/lib/auth/session";
 import { checkInput, redactPII, REFUSAL } from "@/lib/agent/guardrails";
 import { classifyIntent, type Intent } from "@/lib/agent/intent";
 import { answerFaq } from "@/lib/agent/rag";
+import { getProfile, updateProfile } from "@/lib/agent/profile";
 import { extractTransferParams } from "@/lib/text/persian";
-import { getBalance, listTransactions, createPendingTransfer } from "@/lib/banking/tools";
+import { getBalance, listTransactions, createPendingTransfer, getAccountDetails } from "@/lib/banking/tools";
 import { issueOtp } from "@/lib/auth/otp";
 import { formatIRR } from "@/lib/money";
 
@@ -16,6 +17,7 @@ export type ChatResult = {
   requiresAuth?: boolean;
   requiresOtp?: boolean;
   pendingTransferId?: number;
+  devOtp?: string; // dev-only: plaintext OTP so the UI can auto-fill it
   conversationId: number;
 };
 
@@ -27,6 +29,13 @@ export async function handleMessage(
   session: Session | null,
   conversationId: number | null,
 ): Promise<ChatResult> {
+  // Guard against stale sessions: the signed cookie may point at a customer that
+  // no longer exists (e.g. after a DB re-seed). Treat such a session as logged
+  // out so we don't violate FK constraints on conversation/transaction inserts.
+  if (session && !(await prisma.customer.findUnique({ where: { id: session.customerId } }))) {
+    session = null;
+  }
+
   // Ensure a conversation exists.
   const conv = conversationId
     ? await prisma.conversation.findUnique({ where: { id: conversationId } })
@@ -49,6 +58,13 @@ export async function handleMessage(
       intent: result.intent,
     },
   });
+
+  // Learn the customer over time: distill a long-term profile from this
+  // exchange. Logged-in only (needs a stable identity), skip trivial smalltalk,
+  // and fire-and-forget so it never adds latency or breaks the reply.
+  if (session && result.intent !== "smalltalk") {
+    void updateProfile(session.customerId, message, result.reply);
+  }
 
   return { ...result, conversationId: conversation.id };
 }
@@ -83,6 +99,24 @@ async function route(
       return { reply: `موجودی حساب‌های شما:\n${lines}`, intent };
     }
 
+    case "accountinfo": {
+      if (!session) return { reply: LOGIN_PROMPT, intent, requiresAuth: true };
+      const accounts = await getAccountDetails(session.customerId);
+      if (accounts.length === 0) return { reply: "حسابی برای نمایش یافت نشد.", intent };
+      const lines = accounts
+        .map((a) => {
+          const label = a.type === "savings" ? "پس‌انداز" : "جاری";
+          return `• حساب ${label}\n   شماره شبا: ${a.iban}\n   شماره کارت: ${a.cardNumber}`;
+        })
+        .join("\n");
+      return {
+        reply:
+          `اطلاعات حساب‌های شما به شرح زیر است:\n${lines}\n\n` +
+          "شماره شبا (که با IR شروع می‌شود) را می‌توانید برای انتقال‌های پایا و ساتنا بین بانک‌ها استفاده کنید.",
+        intent,
+      };
+    }
+
     case "transactions": {
       if (!session) return { reply: LOGIN_PROMPT, intent, requiresAuth: true };
       const txs = await listTransactions(session.customerId);
@@ -96,6 +130,7 @@ async function route(
     case "transfer": {
       if (!session) return { reply: LOGIN_PROMPT, intent, requiresAuth: true };
       const params = extractTransferParams(message);
+      const destLabel = params.destinationType === "iban" ? "شبا" : "کارت";
       const pending = await createPendingTransfer(session.customerId, params);
       if (!pending.ok) {
         const msg: Record<string, string> = {
@@ -107,18 +142,26 @@ async function route(
         };
         return { reply: msg[pending.error] ?? "امکان ثبت انتقال نبود.", intent };
       }
-      await issueOtp(session.customerId, session.mobile, "transfer", String(pending.transactionId));
+      const { devCode } = await issueOtp(
+        session.customerId,
+        session.mobile,
+        "transfer",
+        String(pending.transactionId),
+      );
       await audit("otp_issued", { txId: pending.transactionId }, session.customerId);
       return {
-        reply: `درخواست انتقال ${formatIRR(pending.amount!)} به مقصد ${pending.destination} ثبت شد.\nبرای تأیید، رمز یکبارمصرفی که پیامک شد را وارد کنید.`,
+        reply: `درخواست انتقال ${formatIRR(pending.amount!)} به ${destLabel} ${pending.destination} ثبت شد.\nبرای تأیید، رمز یکبارمصرفی که پیامک شد را وارد کنید.`,
         intent,
         requiresOtp: true,
         pendingTransferId: pending.transactionId,
+        ...(devCode ? { devOtp: devCode } : {}),
       };
     }
 
     case "faq":
-    default:
-      return { reply: await answerFaq(message), intent: "faq" };
+    default: {
+      const profile = session ? await getProfile(session.customerId) : "";
+      return { reply: await answerFaq(message, { profile }), intent: "faq" };
+    }
   }
 }

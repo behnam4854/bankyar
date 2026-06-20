@@ -28,6 +28,18 @@ model Customer {
   transactions  Transaction[]
   conversations Conversation[]
   otps          Otp[]
+  profile       CustomerProfile?
+}
+
+// Long-term, distilled profile of a customer, built over time from their chats
+// so the assistant can personalize answers across sessions. Holds NO sensitive
+// data (no card/account numbers, no balances) — only durable preferences/topics.
+model CustomerProfile {
+  id         Int      @id @default(autoincrement())
+  customerId Int      @unique
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  summary    String   @default("") // concise Persian profile text
+  updatedAt  DateTime @updatedAt
 }
 
 model Account {
