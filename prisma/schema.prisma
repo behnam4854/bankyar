@@ -1,0 +1,129 @@
+// BankYar data model (MVP).
+//
+// Money/amounts are decimal STRINGS; arithmetic uses decimal.js (src/lib/money.ts)
+// to avoid float drift on IRR amounts.
+//
+// Dev uses SQLite. For production, set provider = "postgresql" and add a
+// pgvector column on KbChunk for semantic retrieval (the MVP uses lexical
+// retrieval so it runs with zero external services).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Customer {
+  id           Int      @id @default(autoincrement())
+  mobile       String   @unique // login id, e.g. 09120000000
+  name         String
+  passwordHash String
+  nationalId   String? // optional, store hashed in prod
+  createdAt    DateTime @default(now())
+
+  accounts      Account[]
+  transactions  Transaction[]
+  conversations Conversation[]
+  otps          Otp[]
+}
+
+model Account {
+  id         Int      @id @default(autoincrement())
+  customerId Int
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  iban       String   @unique // شبا
+  cardNumber String   @unique
+  type       String   @default("current") // current | savings
+  balance    String   @default("0") // decimal string, IRR
+  currency   String   @default("IRR")
+  createdAt  DateTime @default(now())
+
+  @@index([customerId])
+}
+
+model Transaction {
+  id             Int      @id @default(autoincrement())
+  customerId     Int
+  customer       Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  accountId      Int
+  type           String // transfer | billpay
+  amount         String // decimal string, IRR
+  destination    String // dest card or IBAN, or bill id
+  description    String?
+  status         String   @default("pending") // pending | completed | failed
+  idempotencyKey String   @unique
+  createdAt      DateTime @default(now())
+
+  @@index([customerId])
+}
+
+model Conversation {
+  id         Int       @id @default(autoincrement())
+  customerId Int?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdAt  DateTime  @default(now())
+
+  messages Message[]
+}
+
+model Message {
+  id             Int          @id @default(autoincrement())
+  conversationId Int
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String // user | assistant | system | tool
+  content        String
+  intent         String?
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId])
+}
+
+model Otp {
+  id         Int      @id @default(autoincrement())
+  customerId Int
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  purpose    String // transfer
+  refId      String // e.g. transaction id
+  codeHash   String
+  expiresAt  DateTime
+  consumed   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([customerId, refId])
+}
+
+// Knowledge base for FAQ retrieval (RAG).
+model KbDoc {
+  id        Int       @id @default(autoincrement())
+  slug      String    @unique
+  title     String
+  category  String
+  body      String
+  updatedAt DateTime  @default(now())
+
+  chunks KbChunk[]
+}
+
+model KbChunk {
+  id      Int    @id @default(autoincrement())
+  docId   Int
+  doc     KbDoc  @relation(fields: [docId], references: [id], onDelete: Cascade)
+  content String
+  // In production add: embedding vector(1536) (pgvector) for semantic search.
+
+  @@index([docId])
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  customerId Int?
+  action     String
+  detail     String? // JSON string
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([customerId])
+}
