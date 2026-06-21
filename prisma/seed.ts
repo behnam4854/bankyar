@@ -1,9 +1,9 @@
 // Seed demo data: one customer with accounts/transactions, plus a Persian
 // FAQ knowledge base for the RAG retriever.
-import { PrismaClient } from "@prisma/client";
+// Uses the shared client (src/lib/db), so it seeds the local SQLite file by
+// default and the Turso database when TURSO_DATABASE_URL is set in the env.
+import { prisma } from "../src/lib/db";
 import { hashPassword } from "../src/lib/auth/password";
-
-const prisma = new PrismaClient();
 
 const FAQ: { slug: string; title: string; category: string; body: string }[] = [
   {
