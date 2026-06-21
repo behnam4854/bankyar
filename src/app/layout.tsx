@@ -10,6 +10,10 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   themeColor: "#0a0f1a",
+  // On-screen keyboard shrinks the layout viewport (so 100dvh = space above the
+  // keyboard) instead of overlaying it — keeps the composer visible and the
+  // chat scrollable on mobile.
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

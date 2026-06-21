@@ -4,6 +4,7 @@
 *.log
 .env
 .env.local
+.env.vercel
 /prisma/*.db
 /prisma/*.db-journal
 next-env.d.ts

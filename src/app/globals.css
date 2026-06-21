@@ -82,22 +82,29 @@
 }
 
 * { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; height: 100dvh; }
 
 body {
   margin: 0;
-  min-height: 100dvh;
+  /* Lock the document to the viewport: only the chat list scrolls, never the
+     page itself. Prevents the header/chat from being pushed out of view when
+     the mobile keyboard opens. */
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
   font-family: "IRANSans", "Tahoma", "Segoe UI", sans-serif;
   font-weight: 300;
   font-size: 15px;
   line-height: 1.7;
   color: var(--text);
   direction: rtl;
+  /* No background-attachment: fixed — it renders as blank/white patches on
+     mobile during keyboard/scroll. The body fills the viewport, so the gradient
+     covers fully without it. */
   background:
     radial-gradient(1200px 600px at 80% -10%, rgba(16, 185, 129, 0.10), transparent 60%),
     radial-gradient(900px 500px at 0% 110%, rgba(59, 130, 246, 0.08), transparent 55%),
     linear-gradient(160deg, var(--bg-grad-1), var(--bg-grad-2));
-  background-attachment: fixed;
 }
 
 /* Tabular figures keep amounts/IBANs from shifting (number-tabular) */
