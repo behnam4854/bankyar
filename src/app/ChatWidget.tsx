@@ -107,6 +107,29 @@ export default function ChatWidget() {
       .catch(() => {});
   }, []);
 
+  // Keep the app exactly as tall as the *visual* viewport. iOS Safari overlays
+  // the on-screen keyboard instead of shrinking the layout viewport, so 100dvh
+  // stays full-height and leaves a dark gap between the composer and keyboard.
+  // Tracking visualViewport collapses that gap (DeepSeek-style) on every device.
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const root = document.documentElement;
+    const update = () => {
+      root.style.setProperty("--app-height", `${vv.height}px`);
+      // On iOS the page can scroll under the keyboard; counteract that offset so
+      // the composer stays pinned directly above the keyboard.
+      root.style.setProperty("--app-offset", `${vv.offsetTop}px`);
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
+
   useEffect(() => {
     chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, busy]);

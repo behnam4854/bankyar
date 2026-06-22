@@ -90,8 +90,15 @@ body {
   margin: 0;
   /* Lock the document to the viewport: only inner regions scroll, never the
      page itself. Prevents header/composer being pushed out (and the blank
-     patches) when the mobile keyboard opens. */
-  height: 100dvh;
+     patches) when the mobile keyboard opens. --app-height is set from
+     window.visualViewport (see ChatWidget) so the layout shrinks to fit above
+     the keyboard on iOS, where 100dvh stays full-height. */
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: var(--app-offset, 0px);
+  bottom: auto;
+  height: var(--app-height, 100dvh);
   overflow: hidden;
   overscroll-behavior: none;
   font-family: "IRANSans", "Tahoma", "Segoe UI", sans-serif;
@@ -116,7 +123,7 @@ body {
   width: 100%;
   max-width: 880px;
   margin: 0 auto;
-  height: 100dvh;
+  height: var(--app-height, 100dvh);
   min-height: 0;
   display: flex;
   flex-direction: column;
