@@ -24,6 +24,11 @@
    component hardcodes a raw hex. (ui-ux-pro-max: color-semantic, token-driven)
    ========================================================================== */
 :root {
+  /* Tell the browser this is a dark UI. iOS Safari uses this to render native
+     chrome — the keyboard accessory/AutoFill bar, form controls, scrollbars —
+     in dark mode. Without it that bar renders white above the keyboard. */
+  color-scheme: dark;
+
   /* Surfaces — layered elevation */
   --bg: #0a0f1a;
   --bg-grad-1: #0d1626;
