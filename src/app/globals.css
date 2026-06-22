@@ -94,8 +94,10 @@ body {
      window.visualViewport (see ChatWidget) so the layout shrinks to fit above
      the keyboard on iOS, where 100dvh stays full-height. */
   position: fixed;
-  inset: 0;
+  left: 0;
+  right: 0;
   top: var(--app-offset, 0px);
+  bottom: auto;
   height: var(--app-height, 100dvh);
   overflow: hidden;
   overscroll-behavior: none;
